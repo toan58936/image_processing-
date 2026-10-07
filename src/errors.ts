@@ -21,3 +21,8 @@ export class UnsupportedFormatError extends ImageEnhancementError {
 export class ImageTooLargeError extends ImageEnhancementError {
   override readonly name: string = "ImageTooLargeError";
 }
+
+/** Tùy chọn truyền vào enhance() không hợp lệ (ví dụ quality ngoài 1-100). */
+export class InvalidOptionsError extends ImageEnhancementError {
+  override readonly name: string = "InvalidOptionsError";
+}
