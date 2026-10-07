@@ -4,3 +4,6 @@ samples/*
 !samples/.gitkeep
 output/
 .DS_Store
+
+# Công cụ AI/editor tự tạo bản sao dự án
+.kilo/
