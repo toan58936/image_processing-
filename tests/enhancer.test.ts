@@ -13,9 +13,11 @@ import {
 import type { ImageInput } from "../src/index.js";
 import {
   makeImage,
+  makeNoisyFlatPng,
   makeNoisyJpeg,
   makeRotatedJpeg,
   makeTransparentPng,
+  meanAbsDiff,
 } from "./helpers.js";
 
 describe("enhance: luồng cơ bản", () => {
@@ -189,17 +191,28 @@ describe("enhance: giao diện công khai", () => {
   });
 });
 
-// TẠM THỜI: chỉ đúng khi pipeline còn rỗng. Sang chặng C, xóa hoặc thay bằng
-// các test kiểm tra tác động của từng bước xử lý.
-describe("enhance: pipeline rỗng (tạm thời)", () => {
-  it("PNG vào PNG ra giữ nguyên từng pixel", async () => {
-    const data = await makeNoisyJpeg(64).then((jpeg) =>
-      sharp(jpeg).png().toBuffer(),
-    );
+describe("enhance: tác động của pipeline", () => {
+  it("ảnh được thay đổi nhưng giữ kích thước và định dạng", async () => {
+    const data = await makeNoisyFlatPng(64, 30, 7);
     const out = await enhance({ data });
+    expect(out.format).toBe("png");
+    expect(out.width).toBe(64);
+    expect(out.height).toBe(64);
 
-    const original = await sharp(data).raw().toBuffer();
-    const result = await sharp(out.data).raw().toBuffer();
-    expect(result.equals(original)).toBe(true);
+    const before = await sharp(data).raw().toBuffer();
+    const after = await sharp(out.data).raw().toBuffer();
+    expect(meanAbsDiff(before, after)).toBeGreaterThan(0);
+  });
+
+  it("level cao thay đổi ảnh nhiều hơn level thấp", async () => {
+    const data = await makeNoisyFlatPng(64, 30, 7);
+    const before = await sharp(data).raw().toBuffer();
+
+    const diff = async (level: "light" | "strong"): Promise<number> => {
+      const out = await enhance({ data }, { level });
+      return meanAbsDiff(before, await sharp(out.data).raw().toBuffer());
+    };
+
+    expect(await diff("light")).toBeLessThan(await diff("strong"));
   });
 });

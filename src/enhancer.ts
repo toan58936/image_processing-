@@ -1,6 +1,7 @@
 import {
   DEFAULT_LEVEL,
   ENHANCE_LEVELS,
+  LEVEL_PARAMS,
   SUPPORTED_FORMATS,
 } from "./config.js";
 import { InvalidImageError, InvalidOptionsError } from "./errors.js";
@@ -66,7 +67,7 @@ export async function enhance(
 
   const info = await validate(input);
   const raw = await decode(input.data);
-  const processed = await runPipeline(raw, buildPipeline());
+  const processed = await runPipeline(raw, buildPipeline(LEVEL_PARAMS[resolved.level]));
 
   return encode(
     processed,
