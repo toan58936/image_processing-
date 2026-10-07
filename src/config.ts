@@ -38,3 +38,10 @@ export const MAX_QUALITY = 100;
 
 /** Màu nền dùng khi làm phẳng ảnh trong suốt (PNG/WEBP có alpha). */
 export const FLATTEN_BACKGROUND = { r: 255, g: 255, b: 255 } as const;
+
+/** Các mức xử lý hợp lệ. */
+export const ENHANCE_LEVELS: readonly EnhanceLevel[] = [
+  "light",
+  "standard",
+  "strong",
+];

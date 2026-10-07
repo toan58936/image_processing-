@@ -11,7 +11,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "benchmark": "tsx scripts/benchmark.ts"
+    "benchmark": "tsx scripts/benchmark.ts",
+    "try": "tsx scripts/try.ts"
   },
   "keywords": [],
   "author": "",

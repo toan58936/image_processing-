@@ -10,7 +10,7 @@ import { InvalidImageError, InvalidOptionsError } from "../errors.js";
 import type { RawImage } from "../internal-types.js";
 import type { ImageFormat, ImageOutput } from "../types.js";
 
-function assertValidQuality(quality: number): void {
+export function assertValidQuality(quality: number): void {
   if (
     !Number.isInteger(quality) ||
     quality < MIN_QUALITY ||
