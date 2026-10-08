@@ -50,7 +50,7 @@ export const ENHANCE_LEVELS: readonly EnhanceLevel[] = [
 export interface DenoiseParams {
   /** Kích thước cửa sổ median (số lẻ, từ 3 trở lên). */
   readonly medianSize: number;
-  /** Mức lọc tối đa ở vùng phẳng, 0 (tắt) đến 1. */
+  /** Mức lọc luma tối đa ở vùng phẳng, 0 (tắt) đến 1. */
   readonly strength: number;
   /** sigma blur để dò cạnh (mặc định 1.5). */
   readonly edgeSigma?: number;
@@ -58,12 +58,26 @@ export interface DenoiseParams {
   readonly edgeLow?: number;
   /** Từ ngưỡng này là cạnh/chi tiết, không lọc (0-255, phải > edgeLow, mặc định 16). */
   readonly edgeHigh?: number;
+  /** sigma blur cho kênh chroma (mặc định 2.5, lớn hơn edgeSigma). */
+  readonly chromaSigma?: number;
+  /** Cường độ lọc chroma, 0 (tắt) đến 1 (mặc định 0.6). Mắt ít nhạy nhiễu màu nên mặc định mạnh hơn luma. */
+  readonly chromaStrength?: number;
 }
 
-/** Mặc định cho mặt nạ cạnh của bước khử nhiễu. */
+/** Mặc định cho mặt nạ cạnh và lọc chroma của bước khử nhiễu. */
 export const DEFAULT_EDGE_SIGMA = 1.5;
 export const DEFAULT_EDGE_LOW = 4;
 export const DEFAULT_EDGE_HIGH = 16;
+export const DEFAULT_CHROMA_SIGMA = 2.5;
+export const DEFAULT_CHROMA_STRENGTH = 0.6;
+
+/**
+ * Ngưỡng nhiễu chroma để bật lọc chroma trong bước khử nhiễu.
+ * Ảnh có nhiễu chroma dưới ngưỡng này (ảnh sạch) bỏ qua lọc
+ * chroma: chuyển đổi YCbCr qua uint8 có sai lệch ±1 LSB,
+ * sẽ TẠO nhiễu chroma mới nhiều hơn mức lọc bỏ được.
+ */
+export const CHROMA_NOISE_GATE = 1.0;
 
 /** Tham số bước cân sáng và tương phản. */
 export interface ToneParams {
@@ -101,25 +115,42 @@ export interface LevelParams {
  * Để tắt một bước: denoise.strength = 0; tone.strength = 0 và tone.gamma = 1;
  * sharpen.amount = 0.
  *
- * Khử nhiễu có mặt nạ cạnh (thử nghiệm scripts/exp-denoise.ts, 2 mẫu):
- * median chỉ áp dụng ở vùng phẳng (|luma − blur| thấp), cạnh và vết nứt
- * giữ nguyên pixel gốc. So với median toàn cục: giảm nhiễu nhiều hơn
- * (mẫu nhiều nhiễu: −40% ở strong) mà gần như không mất nét (−2–3%);
- * mẫu ít nhiễu chỉ giảm vài % vì ít nhiễu để lọc.
+ * Khử nhiễu tách Y/Cb/Cr: luma dùng median có mặt nạ cạnh
+ * (chỉ lọc vùng phẳng, cạnh và vết nứt giữ nguyên), chroma
+ * dùng blur Gaussian trộn theo chromaStrength (mắt ít nhạy
+ * nhiễu màu nên lọc mạnh mà không mất chi tiết). Thử nghiệm
+ * scripts/exp-denoise.ts (2 mẫu): giảm nhiễu luma 12–33%,
+ * gần như không mất nét (−1–2%).
  */
 export const LEVEL_PARAMS: Record<EnhanceLevel, LevelParams> = {
   light: {
-    denoise: { medianSize: 3, strength: 0.4 },
+    denoise: {
+      medianSize: 3,
+      strength: 0.4,
+      chromaSigma: 2.0,
+      chromaStrength: 0.5,
+    },
     tone: { strength: 0.4, maxSlope: 3, gamma: 1.15 },
     sharpen: { sigma: 1.2, amount: 0.2, threshold: 5 },
   },
   standard: {
-    denoise: { medianSize: 5, strength: 0.5 },
+    denoise: {
+      medianSize: 5,
+      strength: 0.5,
+      chromaSigma: 2.5,
+      chromaStrength: 0.6,
+    },
     tone: { strength: 0.55, maxSlope: 4, gamma: 1.25 },
     sharpen: { sigma: 1.5, amount: 0.3, threshold: 4 },
   },
   strong: {
-    denoise: { medianSize: 5, strength: 0.6, edgeSigma: 2 },
+    denoise: {
+      medianSize: 5,
+      strength: 0.6,
+      edgeSigma: 2,
+      chromaSigma: 3.0,
+      chromaStrength: 0.8,
+    },
     tone: { strength: 0.75, maxSlope: 5, gamma: 1.35 },
     sharpen: { sigma: 1.5, amount: 0.4, threshold: 3 },
   },

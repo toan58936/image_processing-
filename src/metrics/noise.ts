@@ -1,7 +1,8 @@
 import type { RawImage } from "../internal-types.js";
 import { toLuma } from "./luma.js";
 
-const NOISE_BLOCK = 8;
+/** Kích thước khối ước lượng nhiễu (ảnh phải tối thiểu NOISE_BLOCK x NOISE_BLOCK). */
+export const NOISE_BLOCK = 8;
 const NOISE_PERCENTILE = 0.1;
 
 /** Ước lượng mức nhiễu: độ lệch chuẩn độ sáng trong các khối 8x8, lấy phân vị
