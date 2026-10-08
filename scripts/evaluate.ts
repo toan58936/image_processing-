@@ -1,7 +1,10 @@
 /**
  * scripts/evaluate.ts
  * Đánh giá chất lượng 3 chiều: Input / Output (từng level) / Target.
- * Các chỉ số: độ phân giải, độ sáng, nhiễu, độ nét, bão hòa màu, dải động.
+ * Mục tiêu chính (ảnh bằng chứng): độ trung thực với ảnh gốc (PSNR/SSIM).
+ * Các chỉ số còn lại (nét, nhiễu, sáng, dải động, tương phản, chroma,
+ * cháy sáng/tối) chỉ để giám sát không suy thoái. Độ phân giải là thông tin,
+ * không phải tiêu chí (thuộc tính ảnh vào).
  *
  * Dùng:  npm run evaluate -- --input samples/anh-that.jpg --target samples/target_model.jpg
  */
@@ -15,12 +18,14 @@ import { enhance } from "../src/index.js";
 import type { RawImage } from "../src/internal-types.js";
 import {
   measure,
+  psnr,
+  ssim,
   toLuma,
 } from "../src/metrics/index.js";
 import { decode } from "../src/steps/decode.js";
 
 // ─────────────────────────────────────────────
-// Chỉ số bổ sung chưa có trong metrics/quality.ts
+// Chỉ số bổ sung chưa có trong src/metrics/
 // ─────────────────────────────────────────────
 
 /** Ước lượng độ bão hòa màu trung bình (0=xám hoàn toàn, 255=bão hòa tối đa). */
@@ -75,7 +80,6 @@ interface Criterion {
 }
 
 const CRITERIA: Record<string, Criterion> = {
-  megapixels:    { label: "Độ phân giải",       unit: "MP",    better: "higher" },
   sharpness:     { label: "Độ nét (Laplacian)", unit: "var",   better: "higher" },
   noise:         { label: "Nhiễu (σ block)",    unit: "level", better: "lower"  },
   brightness:    { label: "Độ sáng TB",         unit: "0-255", better: "higher" },
@@ -94,6 +98,7 @@ interface MetricsSnapshot {
   label: string;
   width: number;
   height: number;
+  /** Thông tin (không xếp loại): độ phân giải tính bằng MP. */
   megapixels: number;
   sharpness: number;
   noise: number;
@@ -103,6 +108,10 @@ interface MetricsSnapshot {
   saturation: number;
   shadowClip: number;
   highlightClip: number;
+  /** PSNR (dB) so ảnh gốc — chỉ có ở output. */
+  psnrVsInput?: number;
+  /** SSIM (0-1) so ảnh gốc — chỉ có ở output. */
+  ssimVsInput?: number;
 }
 
 function snapshot(label: string, image: RawImage): MetricsSnapshot {
@@ -150,13 +159,20 @@ function printComparisonTable(snapshots: MetricsSnapshot[], targetSnap: MetricsS
   console.log(header);
   console.log(sep);
 
+  // Thông tin (không xếp loại): kích thước ảnh
+  const sizeRow = [
+    "Kích thước (MP)".padEnd(labelWidth),
+    ...snapshots.map(s => `${fmt(s.megapixels, 2)} MP`.padStart(colWidth)),
+  ].join(" | ");
+  console.log(sizeRow);
+
   for (const key of keys) {
     const criterion = CRITERIA[key]!;
     const targetVal = targetSnap[key as keyof MetricsSnapshot] as number;
     const cells = snapshots.map(s => {
       const val = s[key as keyof MetricsSnapshot] as number;
       const emoji = scoreEmoji(val, targetVal, criterion.better);
-      const decimals = key === "megapixels" ? 2 : key === "shadowClip" || key === "highlightClip" ? 2 : 1;
+      const decimals = key === "shadowClip" || key === "highlightClip" ? 2 : 1;
       return `${emoji} ${fmt(val, decimals)} ${criterion.unit}`.padStart(colWidth);
     });
     const rowLabel = `${criterion.label}`.padEnd(labelWidth);
@@ -223,7 +239,7 @@ function printGapAnalysis(gaps: GapItem[]): void {
   console.log("-".repeat(header.length));
 
   gaps.forEach((g, idx) => {
-    const dec = g.key === "megapixels" ? 2 : 2;
+    const dec = 2;
     const priority = g.gapRatio > 0.5 ? "🔴" : g.gapRatio > 0.2 ? "🟡" : "🟢";
     const row = [
       `${priority} ${idx + 1}`.padEnd(colW[0] ?? 4),
@@ -236,6 +252,39 @@ function printGapAnalysis(gaps: GapItem[]): void {
     ];
     console.log(row.join(" "));
   });
+}
+
+// ─────────────────────────────────────────────
+// Độ trung thực với ảnh gốc (PSNR/SSIM)
+// ─────────────────────────────────────────────
+
+function printFidelityTable(snapshots: MetricsSnapshot[]): void {
+  const rows = snapshots.filter(
+    (s) => s.psnrVsInput !== undefined && s.ssimVsInput !== undefined,
+  );
+  if (rows.length === 0) return;
+
+  console.log(
+    "\n=== 🛡️  ĐỘ TRUNG THỰC VỚI ẢNH GỐC (PSNR/SSIM càng cao = càng ít thay đổi) ===\n",
+  );
+  const cols = ["Biến thể", "PSNR (dB)", "SSIM"];
+  const colW = [26, 14, 12];
+  console.log(cols.map((c, i) => c.padEnd(colW[i] ?? 10)).join(" "));
+  console.log("-".repeat(cols.reduce((sum, c, i) => sum + (colW[i] ?? 10), 0)));
+
+  for (const s of rows) {
+    const psnrText = Number.isFinite(s.psnrVsInput!)
+      ? s.psnrVsInput!.toFixed(2)
+      : "∞";
+    const ssimText = s.ssimVsInput!.toFixed(4);
+    console.log(
+      [
+        s.label.padEnd(colW[0] ?? 26),
+        psnrText.padStart(colW[1] ?? 14),
+        ssimText.padStart(colW[2] ?? 12),
+      ].join(" "),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -268,6 +317,9 @@ async function main(): Promise<void> {
   const inputBuf = await readFile(inputPath);
   const inputRaw = await decode(inputBuf);
   const inputSnap = snapshot("📷 Input", inputRaw);
+  // Ảnh gốc so với chính nó: PSNR = ∞, SSIM = 1 (mốc tham chiếu)
+  inputSnap.psnrVsInput = psnr(inputRaw, inputRaw);
+  inputSnap.ssimVsInput = ssim(inputRaw, inputRaw);
 
   console.log(`\n🔍 Đang đánh giá: ${inputPath}`);
   console.log(`   Kích thước: ${inputRaw.width}×${inputRaw.height} px`);
@@ -291,6 +343,9 @@ async function main(): Promise<void> {
     const elapsed = performance.now() - started;
     const outRaw = await decode(out.data);
     const snap = snapshot(`⚙️  ${level}`, outRaw);
+    // Output cùng kích thước input (không upscale) nên so trực tiếp được
+    snap.psnrVsInput = psnr(inputRaw, outRaw);
+    snap.ssimVsInput = ssim(inputRaw, outRaw);
     outputSnaps.push(snap);
 
     // Lưu ảnh output
@@ -309,6 +364,9 @@ async function main(): Promise<void> {
   console.log("\n\n=== 📋 BẢNG SO SÁNH CHẤT LƯỢNG ===");
   console.log(`    (Chuẩn đánh giá: ${referenceSnap.label})\n`);
   printComparisonTable(allSnaps, referenceSnap);
+
+  // Độ trung thực với ảnh gốc (không xếp vào gap analysis)
+  printFidelityTable(allSnaps);
 
   // Gap analysis
   const gaps = gapAnalysis(inputSnap, outputSnaps, referenceSnap);
