@@ -5,6 +5,7 @@ import { degrade } from "../scripts/lib/degrade.js";
 import type { RawImage } from "../src/internal-types.js";
 import {
   brightnessStats,
+  estimateChromaNoise,
   estimateNoise,
   laplacianVariance,
   measure,
@@ -12,7 +13,7 @@ import {
   ssim,
   toLuma,
 } from "../src/metrics/index.js";
-import { makeBlurredEdge, makeNoisyRaw } from "./helpers.js";
+import { makeBlurredEdge, makeColorNoisyRaw, makeNoisyRaw } from "./helpers.js";
 
 function makeFlat(value: number, size = 32): RawImage {
   return {
@@ -110,6 +111,44 @@ describe("estimateNoise", () => {
 
   it("ảnh nhỏ hơn 8x8 báo RangeError", () => {
     expect(() => estimateNoise(makeFlat(100, 4))).toThrow(RangeError);
+  });
+});
+
+describe("estimateChromaNoise", () => {
+  it("ảnh phẳng cho 0", () => {
+    expect(estimateChromaNoise(makeFlat(128, 64))).toBeCloseTo(0, 5);
+  });
+
+  it("ảnh xám (R = G = B) cho 0 kể cả khi có nhiễu luma", () => {
+    expect(estimateChromaNoise(makeNoisyRaw(64, 30, 1))).toBeCloseTo(0, 5);
+  });
+
+  it("nhiễu màu cho giá trị lớn hơn 0", () => {
+    expect(
+      estimateChromaNoise(makeColorNoisyRaw(64, 30, 1)),
+    ).toBeGreaterThan(0);
+  });
+
+  it("nhiễu màu biên độ lớn cho số lớn hơn nhiều so với biên độ nhỏ", () => {
+    const small = estimateChromaNoise(makeColorNoisyRaw(64, 5, 1));
+    const large = estimateChromaNoise(makeColorNoisyRaw(64, 30, 1));
+    expect(large).toBeGreaterThan(small * 3);
+  });
+
+  it("vùng nhiễu màu nhỏ trong ảnh phần lớn là phẳng không làm lệch ước lượng", () => {
+    const size = 64;
+    const noisy = makeColorNoisyRaw(size, 40, 3);
+    const data = Buffer.alloc(size * size * 3, 128);
+    for (let y = 0; y < size; y++) {
+      const start = (y * size + 48) * 3;
+      noisy.data.copy(data, start, start, (y * size + size) * 3);
+    }
+    const image: RawImage = { data, width: size, height: size, channels: 3 };
+    expect(estimateChromaNoise(image)).toBeLessThan(0.5);
+  });
+
+  it("ảnh nhỏ hơn 8x8 báo RangeError", () => {
+    expect(() => estimateChromaNoise(makeFlat(100, 4))).toThrow(RangeError);
   });
 });
 

@@ -84,8 +84,25 @@ import { mulberry32 } from "../src/utils/random.js";
 
 
 
-/** Ảnh thô xám trung bình (128) cộng nhiễu đều +-amplitude, có hạt giống. */
+/** Ảnh thô xám (R = G = B cùng giá trị) trung bình 128, cộng nhiễu đều
+ * +-amplitude, có hạt giống: nhiễu luma thuần, không nhiễu màu. */
 export function makeNoisyRaw(size = 64, amplitude = 30, seed = 1): RawImage {
+  const random = mulberry32(seed);
+  const data = Buffer.alloc(size * size * 3);
+  for (let p = 0; p < size * size; p++) {
+    const value = 128 + (random() * 2 - 1) * amplitude;
+    const clamped = Math.max(0, Math.min(255, Math.round(value)));
+    data.fill(clamped, p * 3, p * 3 + 3);
+  }
+  return { data, width: size, height: size, channels: 3 };
+}
+
+/** Ảnh thô nhiễu độc lập từng kênh R, G, B: có cả nhiễu luma và nhiễu màu. */
+export function makeColorNoisyRaw(
+  size = 64,
+  amplitude = 30,
+  seed = 1,
+): RawImage {
   const random = mulberry32(seed);
   const data = Buffer.alloc(size * size * 3);
   for (let i = 0; i < data.length; i++) {
