@@ -7,6 +7,8 @@ Module TypeScript nhỏ gọn để cải thiện chất lượng ảnh khảo s
 ```
 
 > **Trạng thái hiện tại:** phần khung (kiểm tra đầu vào, giải mã, mã hóa, giao diện công khai, lỗi có kiểu, công cụ đo) đã hoàn chỉnh và có test. Ba bước xử lý ảnh (khử nhiễu, cân sáng, làm nét) chạy được nhưng **tham số vẫn đang được tinh chỉnh** trên ảnh thật. Module chưa được đóng gói và thử tích hợp vào dự án chính.
+>
+> **Mục tiêu sử dụng:** ảnh bằng chứng kiểm tra (vết nứt, rò rỉ) — chỉ hiệu chỉnh sáng, tương phản, khử nhiễu nhẹ. **Trung thực quan trọng hơn đẹp.** Đánh giá theo độ trung thực với ảnh gốc (PSNR/SSIM), xem `npm run evaluate`.
 
 ---
 
@@ -72,6 +74,7 @@ Nếu cả ba lệnh cuối không báo lỗi thì môi trường đã sẵn sà
 | `npm run try -- <ảnh> [tùy chọn]` | Xử lý **một ảnh**, ghi kết quả ra `output/` |
 | `npm run benchmark [-- tùy chọn]` | Xử lý **cả thư mục** `samples/`, in bảng số liệu, xuất ảnh so sánh |
 | `npm run ablate [-- tùy chọn]` | Chạy riêng từng bước để biết bước nào gây ra thay đổi gì |
+| `npm run evaluate -- --input <ảnh> [--target <ảnh>]` | Đánh giá **một ảnh**: so sánh Input / từng level / Target, kèm PSNR/SSIM so với ảnh gốc |
 
 ### 4.1. Thử một ảnh: `npm run try`
 
@@ -137,6 +140,27 @@ npm run ablate -- --input samples
 ```
 
 Mỗi ảnh cho một bảng gồm 10 dòng: mốc "tắt hết", từng bước chạy riêng, "đầy đủ", và "đầy đủ nhưng bỏ một bước". Cột `Δnét %` là mức thay đổi so với mốc. Công cụ này giúp trả lời câu hỏi "bước nào gây ra thay đổi này".
+
+### 4.4. Đánh giá một ảnh: `npm run evaluate`
+
+```bash
+npm run evaluate -- --input samples/anh-that.jpg --target samples/target_model.jpg
+```
+
+| Tùy chọn | Ý nghĩa | Mặc định |
+|---|---|---|
+| `--input` | Ảnh cần đánh giá (bắt buộc) | — |
+| `--target` | Ảnh tham khảo (tùy chọn) | dùng output `strong` làm chuẩn |
+| `--out` | Thư mục ghi kết quả | `output/evaluate` |
+
+Đầu ra:
+
+- **Bảng so sánh**: độ nét, nhiễu, sáng, dải động, tương phản cục bộ, chroma, tỉ lệ pixel cháy tối/sáng của Input, từng level và Target, xếp ✅ ≥95% / 🟡 75–94% / ❌ <75% so với target (kích thước ảnh chỉ là thông tin, không xếp loại)
+- **🛡️ Độ trung thực với ảnh gốc**: PSNR (dB) và SSIM của từng level so với ảnh vào — **tiêu chí chính cho ảnh bằng chứng**, càng cao càng ít thay đổi
+- **Gap analysis**: xếp các chỉ số theo khoảng cách với target
+- Ảnh PNG từng level và `eval-report.json`
+
+Cách đọc: với ảnh bằng chứng, ưu tiên PSNR/SSIM cao (can thiệp vừa phải) trong khi các chỉ số khác không suy thoái so với ảnh vào. `target` chỉ là tham khảo thị giác, không phải chuẩn cần đạt.
 
 ---
 
@@ -244,11 +268,11 @@ Tham số nằm ở `src/config.ts` (`LEVEL_PARAMS`), **đó là nguồn chính 
 
 | Mức | Khử nhiễu (`strength`) | Cân sáng (`strength`, `maxSlope`, `gamma`) | Làm nét (`sigma`, `amount`, `threshold`) |
 |---|---|---|---|
-| `light` | 0 (tắt) | 0.3, 2, 1 | 1.0, 0.25, 2 |
-| `standard` | 0 (tắt) | 0.5, 3, 1.1 | 1.0, 0.4, 2 |
-| `strong` | 0.3 | 0.7, 4, 1.2 | 1.2, 0.6, 2 |
+| `light` | 0 (tắt) | 0.4, 3, 1.15 | 1.2, 0.2, 5 |
+| `standard` | 0 (tắt) | 0.55, 4, 1.25 | 1.5, 0.3, 4 |
+| `strong` | 0.35 | 0.75, 5, 1.35 | 1.5, 0.4, 3 |
 
-Khử nhiễu đang tắt ở `light` và `standard` vì thử nghiệm trên ảnh mẫu cho thấy nó làm mất độ nét nhiều mà giảm nhiễu rất ít (ảnh mẫu vốn ít nhiễu). Quyết định cuối cần thêm ảnh nhiễu hơn.
+Khử nhiễu đang tắt ở `light` và `standard`: ablate trên ảnh mẫu cho thấy lọc median làm mất 13–25% độ nét mà giảm nhiễu gần như không đáng kể (ảnh mẫu ít nhiễu, σ≈2.1). `strong` giữ 0.35 vì mức này nhắm tới ảnh nhiễu/thiếu sáng — cần thêm mẫu nhiều nhiễu để xác nhận lợi/hại trước khi chốt.
 
 ---
 
@@ -265,12 +289,14 @@ image-enhancement/
 │   ├── types.ts            # Kiểu công khai
 │   ├── internal-types.ts   # Kiểu nội bộ (RawImage, EnhanceStep, ImageInfo)
 │   ├── steps/              # validate, decode, denoise, tone, sharpen, encode
-│   └── metrics/            # luma, quality (nét, nhiễu, độ sáng), fidelity (PSNR, SSIM)
+│   ├── metrics/            # luma, sharpness, noise, brightness, measure, fidelity (PSNR, SSIM)
+│   └── utils/              # random.ts (RNG có hạt giống)
 ├── scripts/
 │   ├── try.ts              # Thử một ảnh
 │   ├── benchmark.ts        # Đo cả thư mục
 │   ├── ablate.ts           # Tách từng bước
-│   └── lib/degrade.ts      # Làm xấu ảnh có hạt giống (tạo cặp ảnh nhân tạo)
+│   ├── evaluate.ts         # Đánh giá 1 ảnh: input/levels/target + PSNR/SSIM vs gốc
+│   └── lib/                # degrade.ts (làm xấu ảnh), crop.ts (cắt vùng)
 ├── tests/                  # Test (Vitest) và helpers.ts sinh ảnh thử
 ├── samples/                # Ảnh thật để thử (KHÔNG commit)
 ├── output/                 # Kết quả sinh ra (KHÔNG commit)
@@ -313,9 +339,10 @@ image-enhancement/
 
 **Chất lượng ảnh (đang làm)**
 
+- [x] Quyết định giữ hay bỏ khử nhiễu: tắt ở `light`/`standard` (ablate, commit `fcf0d5e`); `strong` giữ 0.35
+- [ ] Thêm ảnh trong nhà thiếu sáng và ảnh nhiều nhiễu (mẫu hiện ít nhiễu, σ≈2.1) — cần để chốt tham số và verify denoise `strong`
 - [ ] Xem bằng mắt vùng vết nứt và vùng chữ ở ảnh so sánh; chốt mức nào bắt đầu quá tay
-- [ ] Thử thêm ảnh trong nhà thiếu sáng và ảnh nhiều nhiễu (hiện mới thử một ảnh nhỏ, ít nhiễu)
-- [ ] Quyết định giữ hay bỏ khử nhiễu, CLAHE mạnh hay nhẹ, và `strong` khác `standard` thế nào
+- [ ] (Tùy chọn) Hard-guard trong `sharpen`: không tạo pixel cháy mới (≥253 / ≤2)
 - [ ] Cân nhắc chọn mức xử lý thích ứng theo độ nhiễu và độ sáng đo được của từng ảnh
 - [ ] Xem lại `DEFAULT_QUALITY` (hiện làm JPEG ra lớn hơn ảnh vào)
 
