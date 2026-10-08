@@ -3,6 +3,7 @@ import {
   ENHANCE_LEVELS,
   LEVEL_PARAMS,
   SUPPORTED_FORMATS,
+  type LevelParams,
 } from "./config.js";
 import { InvalidImageError, InvalidOptionsError } from "./errors.js";
 import { buildPipeline, runPipeline } from "./pipeline.js";
@@ -49,29 +50,48 @@ function resolveOptions(options: EnhanceOptions): ResolvedOptions {
   return { level, outputFormat, quality };
 }
 
-/**
- * Cải thiện chất lượng một ảnh. Không giữ trạng thái giữa các lần gọi.
- * Luồng: kiểm tra tùy chọn -> validate -> decode -> pipeline -> encode.
- * Mọi lỗi được ném là lớp con của ImageEnhancementError.
- */
-export async function enhance(
+/** Luồng chung: validate -> decode -> pipeline -> encode. */
+async function run(
   input: ImageInput,
-  options: EnhanceOptions = {},
+  resolved: ResolvedOptions,
+  params: LevelParams,
 ): Promise<ImageOutput> {
-  // `level` đã được kiểm tra hợp lệ; sẽ dùng để chọn tham số ở chặng C.
-  const resolved = resolveOptions(options);
-
   if (typeof input !== "object" || input === null) {
     throw new InvalidImageError("input phải là một object có trường data.");
   }
 
   const info = await validate(input);
   const raw = await decode(input.data);
-  const processed = await runPipeline(raw, buildPipeline(LEVEL_PARAMS[resolved.level]));
+  const processed = await runPipeline(raw, buildPipeline(params));
 
   return encode(
     processed,
     resolved.outputFormat ?? info.format,
     resolved.quality,
   );
+}
+
+/**
+ * Cải thiện chất lượng một ảnh. Không giữ trạng thái giữa các lần gọi.
+ * Mọi lỗi được ném là lớp con của ImageEnhancementError.
+ */
+export async function enhance(
+  input: ImageInput,
+  options: EnhanceOptions = {},
+): Promise<ImageOutput> {
+  const resolved = resolveOptions(options);
+  return run(input, resolved, LEVEL_PARAMS[resolved.level]);
+}
+
+/**
+ * CHỈ DÙNG NỘI BỘ (benchmark, ablation): chạy với bộ tham số tùy ý.
+ * KHÔNG export qua index.ts; có test canh giao diện công khai.
+ */
+export async function enhanceWithParams(
+  input: ImageInput,
+  params: LevelParams,
+  options: EnhanceOptions = {},
+): Promise<ImageOutput> {
+  const resolved = resolveOptions(options);
+  return run(input, resolved, params);
 }

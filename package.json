@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "benchmark": "tsx scripts/benchmark.ts",
-    "try": "tsx scripts/try.ts"
+    "try": "tsx scripts/try.ts",
+    "ablate": "tsx scripts/ablate.ts"
   },
   "keywords": [],
   "author": "",
