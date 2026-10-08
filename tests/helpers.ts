@@ -142,3 +142,32 @@ export function meanAbsDiff(a: Uint8Array, b: Uint8Array): number {
   }
   return sum / a.length;
 }
+
+/** Ảnh xám có cạnh dọc mềm: nửa trái 100, nửa phải 140, rồi làm mờ (sigma 2). */
+export async function makeBlurredEdge(size = 64): Promise<RawImage> {
+  const data = Buffer.alloc(size * size * 3);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      data.fill(x < size / 2 ? 100 : 140, (y * size + x) * 3, (y * size + x) * 3 + 3);
+    }
+  }
+  const blurred = await sharp(data, {
+    raw: { width: size, height: size, channels: 3 },
+  })
+    .blur(2)
+    .raw()
+    .toBuffer();
+  return { data: blurred, width: size, height: size, channels: 3 };
+}
+
+/** Giá trị nhỏ nhất và lớn nhất của dãy pixel. */
+export function rangeOf(data: Uint8Array): { min: number; max: number } {
+  let min = 255;
+  let max = 0;
+  for (let i = 0; i < data.length; i++) {
+    const v = data[i] ?? 0;
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  return { min, max };
+}

@@ -64,28 +64,46 @@ export interface ToneParams {
   readonly gamma: number;
 }
 
+/** Tham số bước làm nét (unsharp mask trên độ sáng). */
+export interface SharpenParams {
+  /** Độ rộng làm mờ để tách chi tiết (0.3 đến 5). Nhỏ = làm nét chi tiết mịn. */
+  readonly sigma: number;
+  /** Cường độ làm nét, 0 (tắt) đến 3. */
+  readonly amount: number;
+  /** Chênh lệch độ sáng nhỏ hơn ngưỡng này bị coi là nhiễu, không làm nét (0 đến 50). */
+  readonly threshold: number;
+}
+
+/** Mức tăng/giảm độ sáng tối đa mỗi pixel do làm nét, để hạn chế viền sáng (halo). */
+export const SHARPEN_MAX_DELTA = 48;
+
 /** Tham số của toàn bộ các bước cho một mức xử lý. */
 export interface LevelParams {
   readonly denoise: DenoiseParams;
   readonly tone: ToneParams;
+  readonly sharpen: SharpenParams;
 }
 
 /**
  * Tham số theo mức xử lý.
  * LƯU Ý: đây là giá trị khởi điểm TẠM THỜI, chưa được tinh chỉnh trên ảnh thật.
- * Để tắt một bước: denoise.strength = 0; tone.strength = 0 và tone.gamma = 1.
+ * Để tắt một bước: denoise.strength = 0; tone.strength = 0 và tone.gamma = 1;
+ * sharpen.amount = 0.
  */
 export const LEVEL_PARAMS: Record<EnhanceLevel, LevelParams> = {
   light: {
     denoise: { medianSize: 3, strength: 0.3 },
     tone: { strength: 0.3, maxSlope: 2, gamma: 1 },
+    sharpen: { sigma: 1.0, amount: 0.4, threshold: 2 },
   },
   standard: {
     denoise: { medianSize: 3, strength: 0.5 },
     tone: { strength: 0.5, maxSlope: 3, gamma: 1.1 },
+    sharpen: { sigma: 1.0, amount: 0.7, threshold: 2 },
   },
   strong: {
     denoise: { medianSize: 3, strength: 0.8 },
     tone: { strength: 0.7, maxSlope: 4, gamma: 1.2 },
+    sharpen: { sigma: 1.2, amount: 1.0, threshold: 2 },
   },
 };
