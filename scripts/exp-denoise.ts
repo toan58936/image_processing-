@@ -1,7 +1,7 @@
 /**
- * Thử nghiệm khử nhiễu: so sánh median toàn cục (hiện tại) với
- * khử nhiễu có mặt nạ cạnh — chỉ lọc vùng phẳng, bảo vệ chi tiết.
- * CHƯA phải code sản phẩm: chỉ để thu thập số liệu ra quyết định.
+ * Thử nghiệm khử nhiễu: so sánh các cách tiếp cận trên ảnh gốc và
+ * ảnh có nhiễu nhân tạo (--noise <biên độ>). CHƯA phải code sản phẩm:
+ * chỉ để thu thập số liệu ra quyết định.
  */
 import { readdir, readFile } from "node:fs/promises";
 import { extname, join } from "node:path";
@@ -12,18 +12,24 @@ import sharp from "sharp";
 import { ENHANCE_LEVELS, LEVEL_PARAMS } from "../src/config.js";
 import type { EnhanceLevel } from "../src/index.js";
 import type { ImageOutput } from "../src/types.js";
+import { estimateChromaNoise } from "../src/metrics/index.js";
 import { psnr, ssim } from "../src/metrics/fidelity.js";
 import { measure } from "../src/metrics/measure.js";
 import { encode } from "../src/steps/encode.js";
+import { createDenoiseStep } from "../src/steps/denoise.js";
 import { createSharpenStep } from "../src/steps/sharpen.js";
 import { createToneStep } from "../src/steps/tone.js";
 import { decode } from "../src/steps/decode.js";
+import { mulberry32 } from "../src/utils/random.js";
 import type { RawImage } from "../src/internal-types.js";
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 
 const USAGE = `Cách dùng:
-  npx tsx scripts/exp-denoise.ts [--input samples]`;
+  npx tsx scripts/exp-denoise.ts [--input samples] [--noise <biên độ>]
+
+  --noise: cộng nhiễu đều ±<biên độ> vào mỗi kênh ảnh đầu vào
+  (0 = ảnh gốc; ví dụ 20 hoặc 40 để thử trên ảnh nhiều nhiễu).`;
 
 interface MaskDenoiseOpts {
   /** Bộ lọc nền: median (chống impulse) hoặc gaussian (mịn). */
@@ -41,6 +47,25 @@ interface MaskDenoiseOpts {
 
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+/** Cộng nhiễu đều ±amplitude vào từng kênh (có hạt giống, định lượng được). */
+function addNoise(image: RawImage, amplitude: number, seed = 1): RawImage {
+  if (amplitude <= 0) {
+    return image;
+  }
+  const random = mulberry32(seed);
+  const data = Buffer.allocUnsafe(image.data.length);
+  for (let i = 0; i < data.length; i++) {
+    const value = (image.data[i] ?? 0) + (random() * 2 - 1) * amplitude;
+    data[i] = Math.max(0, Math.min(255, Math.round(value)));
+  }
+  return {
+    data,
+    width: image.width,
+    height: image.height,
+    channels: image.channels,
+  };
 }
 
 /** Khử nhiễu có mặt nạ cạnh: lọc (median/gaussian) chỉ ở vùng phẳng. */
@@ -97,7 +122,8 @@ async function maskDenoise(
 type Variant =
   | { kind: "off" }
   | { kind: "uniform"; medianSize: number; strength: number }
-  | { kind: "mask"; opts: MaskDenoiseOpts };
+  | { kind: "mask"; opts: MaskDenoiseOpts }
+  | { kind: "production" };
 
   /** Chạy pipeline: [denoise tùy chọn] -> tone -> sharpen, xuất PNG. */
 async function runVariant(
@@ -125,6 +151,10 @@ async function runVariant(
     });
   } else if (variant.kind === "mask") {
     steps.push((image: RawImage) => maskDenoise(image, variant.opts));
+  } else if (variant.kind === "production") {
+    // Code sản phẩm thật (src/steps/denoise.ts): tách Y/Cb/Cr,
+    // median + mặt nạ cạnh ở luma, blur chroma có cổng thích ứng.
+    steps.push(createDenoiseStep(params.denoise));
   }
 
   steps.push(createToneStep(params.tone));
@@ -144,7 +174,8 @@ interface VariantDef {
 
 const VARIANTS: readonly VariantDef[] = [
   { name: "tắt", variant: { kind: "off" } },
-  { name: "median3 ×0.35 (hiện tại)", variant: { kind: "uniform", medianSize: 3, strength: 0.35 } },
+  { name: "production (Y/Cb/Cr)", variant: { kind: "production" } },
+  { name: "median3 ×0.35 (cũ)", variant: { kind: "uniform", medianSize: 3, strength: 0.35 } },
   { name: "mask median3 s0.5", variant: { kind: "mask", opts: { filter: "median", medianSize: 3, sigma: 1.5, edgeLow: 4, edgeHigh: 16, strength: 0.5 } } },
   { name: "mask median3 s0.8", variant: { kind: "mask", opts: { filter: "median", medianSize: 3, sigma: 1.5, edgeLow: 4, edgeHigh: 16, strength: 0.8 } } },
   { name: "mask median5 s0.6", variant: { kind: "mask", opts: { filter: "median", medianSize: 5, sigma: 2, edgeLow: 4, edgeHigh: 16, strength: 0.6 } } },
@@ -153,7 +184,11 @@ const VARIANTS: readonly VariantDef[] = [
 
 async function main(): Promise<void> {
   const { values } = parseArgs({
-    options: { input: { type: "string" }, help: { type: "boolean" } },
+    options: {
+      input: { type: "string" },
+      noise: { type: "string" },
+      help: { type: "boolean" },
+    },
   });
   if (values.help) {
     console.log(USAGE);
@@ -161,6 +196,12 @@ async function main(): Promise<void> {
   }
 
   const inputDir = values.input ?? "samples";
+  const noiseAmp = values.noise ? Number.parseFloat(values.noise) : 0;
+  if (Number.isNaN(noiseAmp) || noiseAmp < 0) {
+    console.error("Giá trị --noise phải là số không âm.");
+    process.exitCode = 1;
+    return;
+  }
   const files = (await readdir(inputDir))
     .filter((f) => IMAGE_EXTENSIONS.has(extname(f).toLowerCase()))
     .sort();
@@ -172,7 +213,10 @@ async function main(): Promise<void> {
 
   for (const file of files) {
     const buffer = await readFile(join(inputDir, file));
-    const input = await decode(buffer);
+    let input = await decode(buffer);
+    if (noiseAmp > 0) {
+      input = addNoise(input, noiseAmp, 42);
+    }
 
     for (const level of ENHANCE_LEVELS) {
       const rows: Array<Record<string, string | number>> = [];
@@ -186,6 +230,7 @@ async function main(): Promise<void> {
           "biến thể": name,
           "nét": m.sharpness.toFixed(1),
           "nhiễu": m.noise.toFixed(2),
+          "chromaN": estimateChromaNoise(out).toFixed(2),
           "PSNR dB": Number.isFinite(psnr(input, out))
             ? psnr(input, out).toFixed(2)
             : "∞",
@@ -196,7 +241,7 @@ async function main(): Promise<void> {
         });
       }
 
-      console.log(`\n=== ${file} — mức "${level}" ===`);
+      console.log(`\n=== ${file} — mức "${level}" (noiseAmp=${noiseAmp}) ===`);
       console.table(rows);
     }
   }
