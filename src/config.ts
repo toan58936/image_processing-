@@ -50,9 +50,20 @@ export const ENHANCE_LEVELS: readonly EnhanceLevel[] = [
 export interface DenoiseParams {
   /** Kích thước cửa sổ median (số lẻ, từ 3 trở lên). */
   readonly medianSize: number;
-  /** Mức trộn kết quả median với ảnh gốc, 0 (tắt) đến 1 (hoàn toàn median). */
+  /** Mức lọc tối đa ở vùng phẳng, 0 (tắt) đến 1. */
   readonly strength: number;
+  /** sigma blur để dò cạnh (mặc định 1.5). */
+  readonly edgeSigma?: number;
+  /** |luma gốc − luma mờ| dưới ngưỡng này là vùng phẳng, lọc tối đa (0-255, mặc định 4). */
+  readonly edgeLow?: number;
+  /** Từ ngưỡng này là cạnh/chi tiết, không lọc (0-255, phải > edgeLow, mặc định 16). */
+  readonly edgeHigh?: number;
 }
+
+/** Mặc định cho mặt nạ cạnh của bước khử nhiễu. */
+export const DEFAULT_EDGE_SIGMA = 1.5;
+export const DEFAULT_EDGE_LOW = 4;
+export const DEFAULT_EDGE_HIGH = 16;
 
 /** Tham số bước cân sáng và tương phản. */
 export interface ToneParams {
@@ -90,24 +101,25 @@ export interface LevelParams {
  * Để tắt một bước: denoise.strength = 0; tone.strength = 0 và tone.gamma = 1;
  * sharpen.amount = 0.
  *
- * Khử nhiễu tắt ở light/standard: trên ảnh mẫu (ít nhiễu, σ≈2.1) lọc median
- * làm mất 13-25% độ nét mà giảm nhiễu gần như không đáng kể (ablate).
- * strong giữ 0.35 vì mức này nhắm tới ảnh nhiễu/thiếu sáng — cần thêm mẫu
- * nhiều nhiễu để xác nhận lợi/hại trước khi chốt.
+ * Khử nhiễu có mặt nạ cạnh (thử nghiệm scripts/exp-denoise.ts, 2 mẫu):
+ * median chỉ áp dụng ở vùng phẳng (|luma − blur| thấp), cạnh và vết nứt
+ * giữ nguyên pixel gốc. So với median toàn cục: giảm nhiễu nhiều hơn
+ * (mẫu nhiều nhiễu: −40% ở strong) mà gần như không mất nét (−2–3%);
+ * mẫu ít nhiễu chỉ giảm vài % vì ít nhiễu để lọc.
  */
 export const LEVEL_PARAMS: Record<EnhanceLevel, LevelParams> = {
   light: {
-    denoise: { medianSize: 3, strength: 0 },
+    denoise: { medianSize: 3, strength: 0.4 },
     tone: { strength: 0.4, maxSlope: 3, gamma: 1.15 },
     sharpen: { sigma: 1.2, amount: 0.2, threshold: 5 },
   },
   standard: {
-    denoise: { medianSize: 3, strength: 0 },
+    denoise: { medianSize: 5, strength: 0.5 },
     tone: { strength: 0.55, maxSlope: 4, gamma: 1.25 },
     sharpen: { sigma: 1.5, amount: 0.3, threshold: 4 },
   },
   strong: {
-    denoise: { medianSize: 3, strength: 0.35 },
+    denoise: { medianSize: 5, strength: 0.6, edgeSigma: 2 },
     tone: { strength: 0.75, maxSlope: 5, gamma: 1.35 },
     sharpen: { sigma: 1.5, amount: 0.4, threshold: 3 },
   },

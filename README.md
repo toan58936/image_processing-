@@ -251,7 +251,7 @@ Mọi lỗi của module đều là lớp con của `ImageEnhancementError`, nê
 |---|---|---|
 | Kiểm tra | `steps/validate.ts` | Kiểm tra rẻ qua metadata: Buffer rỗng, dung lượng, định dạng, số pixel, khai báo `format` |
 | Giải mã | `steps/decode.ts` | Giải mã **một lần** thành pixel thô RGB; xoay theo EXIF, làm phẳng alpha, về sRGB |
-| Khử nhiễu | `steps/denoise.ts` | Lọc median rồi **trộn với ảnh gốc** theo `strength` để vết nứt mảnh không bị xóa hẳn |
+| Khử nhiễu | `steps/denoise.ts` | Median **có mặt nạ cạnh**: chỉ lọc vùng phẳng (|luma − blur| thấp), cạnh và vết nứt giữ nguyên pixel gốc; trộn theo `strength` để vết nứt mảnh không bị xóa hẳn |
 | Cân sáng | `steps/tone.ts` | CLAHE (trộn với ảnh gốc theo `strength`) rồi gamma kéo sáng vùng tối |
 | Làm nét | `steps/sharpen.ts` | Unsharp mask **trên độ sáng**; bỏ qua chênh lệch nhỏ (`threshold`), chặn mức cộng theo "chỗ trống" tới 255 và tới 0 để không tạo thêm pixel cháy |
 | Mã hóa | `steps/encode.ts` | Nén **một lần** ra Buffer theo định dạng yêu cầu |
@@ -266,13 +266,13 @@ Nguyên tắc thiết kế:
 
 Tham số nằm ở `src/config.ts` (`LEVEL_PARAMS`), **đó là nguồn chính xác nhất**. Bảng dưới là giá trị khởi điểm tại thời điểm viết tài liệu, **chưa được tinh chỉnh xong**.
 
-| Mức | Khử nhiễu (`strength`) | Cân sáng (`strength`, `maxSlope`, `gamma`) | Làm nét (`sigma`, `amount`, `threshold`) |
+| Mức | Khử nhiễu (`medianSize`, `strength`) | Cân sáng (`strength`, `maxSlope`, `gamma`) | Làm nét (`sigma`, `amount`, `threshold`) |
 |---|---|---|---|
-| `light` | 0 (tắt) | 0.4, 3, 1.15 | 1.2, 0.2, 5 |
-| `standard` | 0 (tắt) | 0.55, 4, 1.25 | 1.5, 0.3, 4 |
-| `strong` | 0.35 | 0.75, 5, 1.35 | 1.5, 0.4, 3 |
+| `light` | 3, 0.4 | 0.4, 3, 1.15 | 1.2, 0.2, 5 |
+| `standard` | 5, 0.5 | 0.55, 4, 1.25 | 1.5, 0.3, 4 |
+| `strong` | 5, 0.6 (edgeSigma 2) | 0.75, 5, 1.35 | 1.5, 0.4, 3 |
 
-Khử nhiễu đang tắt ở `light` và `standard`: ablate trên ảnh mẫu cho thấy lọc median làm mất 13–25% độ nét mà giảm nhiễu gần như không đáng kể (ảnh mẫu ít nhiễu, σ≈2.1). `strong` giữ 0.35 vì mức này nhắm tới ảnh nhiễu/thiếu sáng — cần thêm mẫu nhiều nhiễu để xác nhận lợi/hại trước khi chốt.
+Khử nhiễu dùng **mặt nạ cạnh**: trọng số lọc = `strength × flatness`, `flatness` giảm từ 1 về 0 khi |luma gốc − luma sau blur| tăng từ `edgeLow` (4) tới `edgeHigh` (16). Thử nghiệm `scripts/exp-denoise.ts` (2 mẫu) so median toàn cục: giảm nhiễu nhiều hơn (mẫu nhiều nhiễu −33% ở standard, −40% ở strong) mà chỉ mất 1–2% độ nét; median toàn cục mất 13–25% nét để giảm ~0–4%. Ảnh mẫu ít nhiễu (σ≈2.1) cải thiện ít hơn vì ít nhiễu để lọc — cần thêm mẫu nhiều nhiễu để chốt tham số.
 
 ---
 
@@ -296,6 +296,7 @@ image-enhancement/
 │   ├── benchmark.ts        # Đo cả thư mục
 │   ├── ablate.ts           # Tách từng bước
 │   ├── evaluate.ts         # Đánh giá 1 ảnh: input/levels/target + PSNR/SSIM vs gốc
+│   ├── exp-denoise.ts      # Thử nghiệm chiến lược khử nhiễu (median toàn cục vs mặt nạ cạnh)
 │   └── lib/                # degrade.ts (làm xấu ảnh), crop.ts (cắt vùng)
 ├── tests/                  # Test (Vitest) và helpers.ts sinh ảnh thử
 ├── samples/                # Ảnh thật để thử (KHÔNG commit)
@@ -339,8 +340,8 @@ image-enhancement/
 
 **Chất lượng ảnh (đang làm)**
 
-- [x] Quyết định giữ hay bỏ khử nhiễu: tắt ở `light`/`standard` (ablate, commit `fcf0d5e`); `strong` giữ 0.35
-- [ ] Thêm ảnh trong nhà thiếu sáng và ảnh nhiều nhiễu (mẫu hiện ít nhiễu, σ≈2.1) — cần để chốt tham số và verify denoise `strong`
+- [x] Quyết định giữ hay bỏ khử nhiễu: median toàn cục bị bỏ (ablate, commit `fcf0d5e`); thay bằng **median có mặt nạ cạnh** — giảm nhiễu 12–33% chỉ mất 1–2% nét (exp-denoise, commit tiếp theo)
+- [ ] Thêm ảnh trong nhà thiếu sáng và ảnh nhiều nhiễu (mẫu hiện ít nhiễu, σ≈2.1) — cần để chốt tham số `strength`/`edgeLow`/`edgeHigh` của mặt nạ cạnh
 - [ ] Xem bằng mắt vùng vết nứt và vùng chữ ở ảnh so sánh; chốt mức nào bắt đầu quá tay
 - [ ] (Tùy chọn) Hard-guard trong `sharpen`: không tạo pixel cháy mới (≥253 / ≤2)
 - [ ] Cân nhắc chọn mức xử lý thích ứng theo độ nhiễu và độ sáng đo được của từng ảnh
