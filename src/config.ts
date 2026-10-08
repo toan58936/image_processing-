@@ -107,3 +107,9 @@ export const LEVEL_PARAMS: Record<EnhanceLevel, LevelParams> = {
     sharpen: { sigma: 1.2, amount: 0.6, threshold: 2 },
   },
 };
+
+/**
+ * Làm nét chỉ được cộng/trừ tối đa tỉ lệ này của "chỗ trống" còn lại tới 255
+ * (hoặc tới 0), nên không tạo thêm pixel cháy sáng hoặc cháy tối. Giá trị khởi điểm.
+ */
+export const SHARPEN_HEADROOM_RATIO = 0.5;
