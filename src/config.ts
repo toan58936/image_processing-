@@ -89,15 +89,20 @@ export interface LevelParams {
  * LƯU Ý: đây là giá trị khởi điểm TẠM THỜI, chưa được tinh chỉnh trên ảnh thật.
  * Để tắt một bước: denoise.strength = 0; tone.strength = 0 và tone.gamma = 1;
  * sharpen.amount = 0.
+ *
+ * Khử nhiễu tắt ở light/standard: trên ảnh mẫu (ít nhiễu, σ≈2.1) lọc median
+ * làm mất 13-25% độ nét mà giảm nhiễu gần như không đáng kể (ablate).
+ * strong giữ 0.35 vì mức này nhắm tới ảnh nhiễu/thiếu sáng — cần thêm mẫu
+ * nhiều nhiễu để xác nhận lợi/hại trước khi chốt.
  */
 export const LEVEL_PARAMS: Record<EnhanceLevel, LevelParams> = {
   light: {
-    denoise: { medianSize: 3, strength: 0.1 },
+    denoise: { medianSize: 3, strength: 0 },
     tone: { strength: 0.4, maxSlope: 3, gamma: 1.15 },
     sharpen: { sigma: 1.2, amount: 0.2, threshold: 5 },
   },
   standard: {
-    denoise: { medianSize: 3, strength: 0.2 },
+    denoise: { medianSize: 3, strength: 0 },
     tone: { strength: 0.55, maxSlope: 4, gamma: 1.25 },
     sharpen: { sigma: 1.5, amount: 0.3, threshold: 4 },
   },
