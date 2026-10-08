@@ -104,6 +104,29 @@ describe("tone: CLAHE", () => {
     expect(maxChannelGap).toBeLessThanOrEqual(2);
   });
 
+  it("CLAHE không làm thay đổi hue của ảnh có màu", async () => {
+    // Tạo ảnh màu đỏ (R >> G, B)
+    const base = makeNoisyRaw(64, 10, 4);
+    const redImage = Buffer.from(base.data);
+    for (let i = 0; i < redImage.length; i += 3) {
+      redImage[i] = 200; // R
+      redImage[i + 1] = 50; // G
+      redImage[i + 2] = 50; // B
+    }
+    const input: RawImage = { ...base, data: redImage };
+    const out = await createToneStep({ strength: 1, maxSlope: 3, gamma: 1 })(
+      input,
+    );
+
+    for (let i = 0; i < out.data.length; i += 3) {
+      const r = out.data[i] ?? 0;
+      const g = out.data[i + 1] ?? 0;
+      const b = out.data[i + 2] ?? 0;
+      expect(r).toBeGreaterThan(g);
+      expect(r).toBeGreaterThan(b);
+    }
+  });
+
   it("ảnh quá nhỏ: bỏ qua CLAHE, không báo lỗi", async () => {
     const input = makeNoisyRaw(10, 10, 4);
     const out = await createToneStep({ strength: 1, maxSlope: 3, gamma: 1 })(

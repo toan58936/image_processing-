@@ -1,6 +1,10 @@
 import sharp from "sharp";
 
-import { SHARPEN_MAX_DELTA, type SharpenParams } from "../config.js";
+import {
+  SHARPEN_HEADROOM_RATIO,
+  SHARPEN_MAX_DELTA,
+  type SharpenParams,
+} from "../config.js";
 import { InvalidImageError, InvalidOptionsError } from "../errors.js";
 import type { EnhanceStep } from "../internal-types.js";
 
@@ -35,7 +39,9 @@ function clampByte(value: number): number {
  * Tạo bước làm nét bằng unsharp mask trên độ sáng.
  * - Chênh lệch giữa ảnh gốc và bản làm mờ được cộng lại để cạnh rõ hơn.
  * - Chênh lệch nhỏ hơn `threshold` bị bỏ qua (không khuếch đại nhiễu).
- * - Mức thay đổi mỗi pixel bị chặn ở SHARPEN_MAX_DELTA (hạn chế halo).
+ * - Mức thay đổi mỗi pixel bị chặn ở SHARPEN_MAX_DELTA.
+ * - Mức thay đổi còn bị chặn theo "chỗ trống" tới 255 / tới 0 (SHARPEN_HEADROOM_RATIO)
+ *   để không tạo thêm pixel cháy sáng hoặc cháy tối.
  * - Cùng một lượng được cộng lên R, G, B nên không sinh viền màu.
  * Không thay đổi kích thước hay Buffer đầu vào.
  */
@@ -72,10 +78,18 @@ export function createSharpenStep(params: SharpenParams): EnhanceStep {
 
       const magnitude = Math.max(0, Math.abs(diff) - threshold) * amount;
       const signed = diff < 0 ? -magnitude : magnitude;
-      const delta = Math.max(
+      let delta = Math.max(
         -SHARPEN_MAX_DELTA,
         Math.min(SHARPEN_MAX_DELTA, signed),
       );
+
+      if (delta > 0) {
+        const headroom = 255 - Math.max(r, g, b);
+        delta = Math.min(delta, headroom * SHARPEN_HEADROOM_RATIO);
+      } else if (delta < 0) {
+        const floor = Math.min(r, g, b);
+        delta = Math.max(delta, -floor * SHARPEN_HEADROOM_RATIO);
+      }
 
       out[i] = clampByte(Math.round(r + delta));
       out[i + 1] = clampByte(Math.round(g + delta));

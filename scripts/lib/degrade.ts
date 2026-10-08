@@ -1,6 +1,7 @@
 import sharp from "sharp";
 
 import type { RawImage } from "../../src/internal-types.js";
+import { mulberry32 } from "../../src/utils/random.js";
 
 export interface DegradeOptions {
   /** Độ mờ (sigma); 0 = không làm mờ. */
@@ -21,16 +22,7 @@ export const DEFAULT_DEGRADE: DegradeOptions = {
   seed: 42,
 };
 
-/** Bộ sinh số ngẫu nhiên có hạt giống. */
-export function mulberry32(seed: number): () => number {
-  let a = seed;
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+
 
 /** Làm xấu ảnh: làm mờ, làm tối, thêm nhiễu (theo thứ tự đó). Tái lập được. */
 export async function degrade(

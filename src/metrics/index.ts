@@ -1,9 +1,8 @@
 export { toLuma } from "./luma.js";
-export {
-  brightnessStats,
-  estimateNoise,
-  laplacianVariance,
-  measure,
-} from "./quality.js";
-export type { BrightnessStats, QualityMetrics } from "./quality.js";
+export { laplacianVariance } from "./sharpness.js";
+export { estimateNoise } from "./noise.js";
+export { brightnessStats } from "./brightness.js";
+export type { BrightnessStats } from "./brightness.js";
+export { measure } from "./measure.js";
+export type { QualityMetrics } from "./measure.js";
 export { psnr, ssim } from "./fidelity.js";

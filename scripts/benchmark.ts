@@ -12,6 +12,7 @@ import { measure, psnr, ssim } from "../src/metrics/index.js";
 import type { QualityMetrics } from "../src/metrics/index.js";
 import { decode } from "../src/steps/decode.js";
 import { DEFAULT_DEGRADE, degrade } from "./lib/degrade.js";
+import { cropRaw } from "./lib/crop.js";
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 const MAX_TILE_WIDTH = 800;
@@ -175,6 +176,7 @@ async function main(): Promise<void> {
       crop: { type: "string" },
       zoom: { type: "string" },
       "skip-synthetic": { type: "boolean" },
+      "measure-crop": { type: "boolean" },
       help: { type: "boolean" },
     },
   });
@@ -188,6 +190,8 @@ async function main(): Promise<void> {
   const outDir = values.out ?? join("output", "benchmark");
   const levels = parseLevels(values.levels);
   const crop = parseCrop(values.crop);
+  const region = (image: RawImage): RawImage =>
+    values["measure-crop"] === true && crop ? cropRaw(image, crop) : image;
   const zoom = values.zoom === undefined ? 3 : Number(values.zoom);
   if (!Number.isInteger(zoom) || zoom < 1 || zoom > 10) {
     throw new Error("--zoom phải là số nguyên từ 1 đến 10.");
@@ -221,7 +225,7 @@ async function main(): Promise<void> {
     const original = await decode(buffer);
 
     // 1. Ảnh thật: chỉ số không cần ảnh chuẩn
-    realRows.push(describeRow(file, "gốc", measure(original), "-"));
+    realRows.push(describeRow(file, "gốc", measure(region(original)), "-"));
     const tiles: RawImage[] = [original];
 
     for (const level of levels) {
@@ -232,7 +236,7 @@ async function main(): Promise<void> {
 
       const enhanced = await decode(out.data);
       realRows.push(
-        describeRow(file, level, measure(enhanced), elapsed.toFixed(0)),
+        describeRow(file, level, measure(region(enhanced)), elapsed.toFixed(0)),
       );
       await writeFile(
         join(outDir, `${name}-${level}.${extensionOf(out.format)}`),

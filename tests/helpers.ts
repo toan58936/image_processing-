@@ -80,17 +80,9 @@ export async function makeNoisyJpeg(size = 200): Promise<Buffer> {
 }
 
 import type { RawImage } from "../src/internal-types.js";
+import { mulberry32 } from "../src/utils/random.js";
 
-/** Bộ sinh số ngẫu nhiên có hạt giống: cùng seed cho cùng dãy số. */
-function mulberry32(seed: number): () => number {
-  let a = seed;
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+
 
 /** Ảnh thô xám trung bình (128) cộng nhiễu đều +-amplitude, có hạt giống. */
 export function makeNoisyRaw(size = 64, amplitude = 30, seed = 1): RawImage {
@@ -170,4 +162,16 @@ export function rangeOf(data: Uint8Array): { min: number; max: number } {
     if (v > max) max = v;
   }
   return { min, max };
+}
+
+/** Ảnh xám có cạnh dọc gắt (không làm mờ): nửa trái `low`, nửa phải `high`. */
+export function makeHardStep(size: number, low: number, high: number): RawImage {
+  const data = Buffer.alloc(size * size * 3);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const start = (y * size + x) * 3;
+      data.fill(x < size / 2 ? low : high, start, start + 3);
+    }
+  }
+  return { data, width: size, height: size, channels: 3 };
 }

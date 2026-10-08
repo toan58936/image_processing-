@@ -13,7 +13,8 @@
     "lint": "eslint .",
     "benchmark": "tsx scripts/benchmark.ts",
     "try": "tsx scripts/try.ts",
-    "ablate": "tsx scripts/ablate.ts"
+    "ablate": "tsx scripts/ablate.ts",
+    "evaluate": "tsx scripts/evaluate.ts"
   },
   "keywords": [],
   "author": "",

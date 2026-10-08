@@ -30,16 +30,8 @@ function assertValidParams(params: ToneParams): void {
   }
 }
 
-/** Trộn ảnh đã xử lý với ảnh gốc: out = gốc*(1-s) + xử lý*s. */
-function blend(original: Buffer, processed: Buffer, strength: number): Buffer {
-  const keep = 1 - strength;
-  const out = Buffer.allocUnsafe(original.length);
-  for (let i = 0; i < original.length; i++) {
-    out[i] = Math.round(
-      (original[i] ?? 0) * keep + (processed[i] ?? 0) * strength,
-    );
-  }
-  return out;
+function clampByte(value: number): number {
+  return value < 0 ? 0 : value > 255 ? 255 : value;
 }
 
 /** Áp gamma bằng bảng tra 256 giá trị: out = 255 * (in/255)^(1/gamma). */
@@ -56,7 +48,15 @@ function applyGamma(data: Buffer, gamma: number): Buffer {
 }
 
 /**
- * Tạo bước cân sáng và tương phản: CLAHE (trộn với ảnh gốc) rồi gamma.
+ * Tạo bước cân sáng và tương phản: CLAHE chỉ trên kênh độ sáng (luma) rồi gamma.
+ *
+ * Chiến lược luma-preserving (tránh color shift):
+ *   1. Chuyển RGB sang grayscale để lấy luma BT.601 của từng pixel.
+ *   2. Áp CLAHE chỉ trên kênh grayscale 1 kênh → luma mới.
+ *   3. Blend: blended_luma = old_luma*(1−strength) + clahe_luma*strength.
+ *   4. scale = blended_luma / old_luma → nhân cả R, G, B theo cùng tỉ lệ.
+ *      → Hue và bão hòa màu được bảo toàn; chỉ độ sáng thay đổi.
+ *
  * Không thay đổi kích thước hay Buffer đầu vào.
  */
 export function createToneStep(params: ToneParams): EnhanceStep {
@@ -73,17 +73,50 @@ export function createToneStep(params: ToneParams): EnhanceStep {
         MAX_TILE,
         Math.max(MIN_TILE, Math.round(minSide / TILES_ACROSS)),
       );
-      const equalised = await sharp(data, { raw: { width, height, channels } })
-        .clahe({ width: tile, height: tile, maxSlope })
+
+      // 1. Lấy kênh luma grayscale (1 kênh, BT.601)
+      const lumaGray = await sharp(data, { raw: { width, height, channels } })
+        .grayscale()
         .raw()
         .toBuffer();
 
-      if (equalised.length !== data.length) {
+      if (lumaGray.length !== width * height) {
         throw new InvalidImageError(
-          `CLAHE trả về ${equalised.length} byte, kỳ vọng ${data.length}.`,
+          `Grayscale trả về ${lumaGray.length} byte, kỳ vọng ${width * height}.`,
         );
       }
-      data = blend(data, equalised, strength);
+
+      // 2. CLAHE chỉ trên kênh grayscale (1 kênh)
+      const lumaClahe = await sharp(lumaGray, {
+        raw: { width, height, channels: 1 },
+      })
+        .clahe({ width: tile, height: tile, maxSlope })
+        .toColourspace("b-w")
+        .raw()
+        .toBuffer();
+
+      if (lumaClahe.length !== width * height) {
+        throw new InvalidImageError(
+          `CLAHE trả về ${lumaClahe.length} byte, kỳ vọng ${width * height}.`,
+        );
+      }
+
+      // 3. Nhân tỉ lệ thay đổi luma vào cả R,G,B → hue và saturation không đổi
+      const out = Buffer.allocUnsafe(data.length);
+      for (let p = 0; p < width * height; p++) {
+        const oldL = lumaGray[p] ?? 0;
+        const claheL = lumaClahe[p] ?? 0;
+        // Blend theo strength
+        const newL = oldL * (1 - strength) + claheL * strength;
+        // Scale factor; pixel hoàn toàn đen (oldL=0) → giữ nguyên
+        const scale = oldL > 0 ? newL / oldL : 1;
+
+        const ri = p * 3;
+        out[ri]     = clampByte(Math.round((data[ri]     ?? 0) * scale));
+        out[ri + 1] = clampByte(Math.round((data[ri + 1] ?? 0) * scale));
+        out[ri + 2] = clampByte(Math.round((data[ri + 2] ?? 0) * scale));
+      }
+      data = out;
     }
 
     if (gamma !== 1) {

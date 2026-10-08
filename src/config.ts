@@ -92,19 +92,19 @@ export interface LevelParams {
  */
 export const LEVEL_PARAMS: Record<EnhanceLevel, LevelParams> = {
   light: {
-    denoise: { medianSize: 3, strength: 0 },
-    tone: { strength: 0.3, maxSlope: 2, gamma: 1 },
-    sharpen: { sigma: 1.0, amount: 0.25, threshold: 2 },
+    denoise: { medianSize: 3, strength: 0.1 },
+    tone: { strength: 0.4, maxSlope: 3, gamma: 1.15 },
+    sharpen: { sigma: 1.2, amount: 0.2, threshold: 5 },
   },
   standard: {
-    denoise: { medianSize: 3, strength: 0 },
-    tone: { strength: 0.5, maxSlope: 3, gamma: 1.1 },
-    sharpen: { sigma: 1.0, amount: 0.4, threshold: 2 },
+    denoise: { medianSize: 3, strength: 0.2 },
+    tone: { strength: 0.55, maxSlope: 4, gamma: 1.25 },
+    sharpen: { sigma: 1.5, amount: 0.3, threshold: 4 },
   },
   strong: {
-    denoise: { medianSize: 3, strength: 0.3 },
-    tone: { strength: 0.7, maxSlope: 4, gamma: 1.2 },
-    sharpen: { sigma: 1.2, amount: 0.6, threshold: 2 },
+    denoise: { medianSize: 3, strength: 0.35 },
+    tone: { strength: 0.75, maxSlope: 5, gamma: 1.35 },
+    sharpen: { sigma: 1.5, amount: 0.4, threshold: 3 },
   },
 };
 
